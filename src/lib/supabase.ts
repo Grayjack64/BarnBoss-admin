@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { User } from '@supabase/auth-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -14,6 +15,9 @@ export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
     persistSession: false
   }
 })
+
+// Re-export User type from Supabase Auth
+export type { User } from '@supabase/auth-js'
 
 // Database types
 export interface Organization {
@@ -61,7 +65,7 @@ export interface OrganizationMember {
   updated_at: string
 }
 
-export interface User {
+export interface UserProfile {
   id: string
   email: string
   created_at: string
