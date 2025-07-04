@@ -2,15 +2,8 @@
   publish = ".next"
   command = "npm run build"
 
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/:splat"
-  status = 200
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
 
 [[headers]]
   for = "/*"
@@ -21,14 +14,9 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://hjqxajipxbbnggrscpcq.supabase.co;"
 
-[functions]
-  directory = "netlify/functions"
-  node_bundler = "esbuild"
-
 [dev]
   command = "npm run dev"
   port = 3000
-  publish = ".next"
 
 [context.production]
   environment = { NODE_ENV = "production" } 
