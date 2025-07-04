@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabaseAdmin, Organization, User } from '@/lib/supabase'
+import { supabaseAdmin, Organization, User } from '../lib/supabase'
 import { BuildingOfficeIcon, UserIcon, AcademicCapIcon } from '@heroicons/react/24/outline'
 import OrganizationSetup from './OrganizationSetup'
 import TrainerSetup from './TrainerSetup'

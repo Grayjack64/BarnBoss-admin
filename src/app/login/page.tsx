@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { authenticate } from '@/lib/auth'
+import { authenticate } from '../../lib/auth'
 import toast from 'react-hot-toast'
 
 export default function LoginPage() {

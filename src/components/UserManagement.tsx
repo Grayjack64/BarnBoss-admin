@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabaseAdmin, Organization, User } from '@/lib/supabase'
+import { supabaseAdmin, Organization, User } from '../lib/supabase'
 import { v4 as uuidv4 } from 'uuid'
 import toast from 'react-hot-toast'
 
