@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabaseAdmin, Organization, User } from '../lib/supabase'
+import { Organization, User } from '../lib/supabase'
 import { v4 as uuidv4 } from 'uuid'
 import toast from 'react-hot-toast'
 
@@ -33,14 +33,11 @@ export default function UserManagement({ organizations, users, onComplete }: Pro
   // Load roles when organization is selected
   const loadOrgRoles = async (orgId: string) => {
     try {
-      const { data: roles, error } = await supabaseAdmin
-        .from('roles')
-        .select('*')
-        .eq('organization_id', orgId)
-        .order('name')
-
-      if (error) throw error
-      setOrgRoles(roles || [])
+      const response = await fetch(`/api/roles?organization_id=${orgId}`)
+      if (!response.ok) throw new Error('Failed to fetch roles')
+      
+      const data = await response.json()
+      setOrgRoles(data.roles || [])
     } catch (error) {
       console.error('Error loading roles:', error)
       toast.error('Failed to load organization roles')
@@ -48,46 +45,66 @@ export default function UserManagement({ organizations, users, onComplete }: Pro
   }
 
   // Load roles when organization changes
-  useState(() => {
+  useEffect(() => {
     if (watchedOrgId) {
       loadOrgRoles(watchedOrgId)
     }
-  })
+  }, [watchedOrgId])
 
   const createUser = async (data: UserFormData) => {
     setLoading(true)
     
     try {
-      // Create user account
-      const { data: userData, error: userError } = await supabaseAdmin.auth.admin.createUser({
-        email: data.email,
-        password: data.password,
-        email_confirm: true,
-        user_metadata: {
-          full_name: data.name,
-          role: 'user'
-        }
+      // Create user account via API
+      const userResponse = await fetch('/api/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password,
+          userData: {
+            full_name: data.name,
+            role: 'user'
+          }
+        })
       })
 
-      if (userError) throw userError
+      if (!userResponse.ok) {
+        const errorData = await userResponse.json()
+        throw new Error(errorData.error || 'Failed to create user')
+      }
 
-      // Add user to organization
-      const { error: memberError } = await supabaseAdmin
-        .from('organization_members')
-        .insert({
+      const userData = await userResponse.json()
+
+      // Add user to organization via API
+      const memberResponse = await fetch('/api/organization-members', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           id: uuidv4(),
           organization_id: data.organizationId,
           user_id: userData.user.id,
           role_id: data.roleId,
           is_active: true
         })
+      })
 
-      if (memberError) throw memberError
+      if (!memberResponse.ok) {
+        const errorData = await memberResponse.json()
+        throw new Error(errorData.error || 'Failed to add user to organization')
+      }
 
-      // Create user profile
-      const { error: profileError } = await supabaseAdmin
-        .from('user_account_profiles')
-        .insert({
+      // Create user profile via API
+      const profileResponse = await fetch('/api/profiles', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           id: uuidv4(),
           user_id: userData.user.id,
           account_type: 'organization',
@@ -95,15 +112,19 @@ export default function UserManagement({ organizations, users, onComplete }: Pro
           bio: `Member of ${organizations.find(org => org.id === data.organizationId)?.name}`,
           is_active: true
         })
+      })
 
-      if (profileError) throw profileError
+      if (!profileResponse.ok) {
+        const errorData = await profileResponse.json()
+        throw new Error(errorData.error || 'Failed to create user profile')
+      }
 
       toast.success('User created successfully!')
       reset()
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating user:', error)
-      toast.error(`Failed to create user: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      toast.error(error.message || 'Failed to create user')
     } finally {
       setLoading(false)
     }
@@ -113,42 +134,56 @@ export default function UserManagement({ organizations, users, onComplete }: Pro
     try {
       setLoading(true)
       
-      // Check if user is already in organization
-      const { data: existingMember } = await supabaseAdmin
-        .from('organization_members')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('organization_id', orgId)
-        .single()
+      // Check if user is already in organization via API
+      const checkResponse = await fetch(`/api/organization-members?user_id=${userId}&organization_id=${orgId}`)
+      
+      if (checkResponse.ok) {
+        const existingData = await checkResponse.json()
+        
+        if (existingData.member) {
+          // Update existing membership via API
+          const updateResponse = await fetch(`/api/organization-members/${existingData.member.id}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ role_id: roleId, is_active: true })
+          })
 
-      if (existingMember) {
-        // Update existing membership
-        const { error } = await supabaseAdmin
-          .from('organization_members')
-          .update({ role_id: roleId, is_active: true })
-          .eq('id', existingMember.id)
-
-        if (error) throw error
-        toast.success('User role updated successfully!')
+          if (!updateResponse.ok) {
+            const errorData = await updateResponse.json()
+            throw new Error(errorData.error || 'Failed to update user role')
+          }
+          
+          toast.success('User role updated successfully!')
+        }
       } else {
-        // Create new membership
-        const { error } = await supabaseAdmin
-          .from('organization_members')
-          .insert({
+        // Create new membership via API
+        const createResponse = await fetch('/api/organization-members', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
             id: uuidv4(),
             organization_id: orgId,
             user_id: userId,
             role_id: roleId,
             is_active: true
           })
+        })
 
-        if (error) throw error
+        if (!createResponse.ok) {
+          const errorData = await createResponse.json()
+          throw new Error(errorData.error || 'Failed to assign user to organization')
+        }
+
         toast.success('User assigned to organization successfully!')
       }
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error assigning user:', error)
-      toast.error('Failed to assign user to organization')
+      toast.error(error.message || 'Failed to assign user to organization')
     } finally {
       setLoading(false)
     }
@@ -200,7 +235,7 @@ export default function UserManagement({ organizations, users, onComplete }: Pro
                 <input
                   {...register('name', { required: 'Name is required' })}
                   className="form-input"
-                  placeholder="User's full name"
+                  placeholder="John Doe"
                 />
                 {errors.name && <p className="text-red-600 text-sm mt-1">{errors.name.message}</p>}
               </div>
@@ -211,13 +246,13 @@ export default function UserManagement({ organizations, users, onComplete }: Pro
                   {...register('email', { 
                     required: 'Email is required',
                     pattern: {
-                      value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                      value: /^\S+@\S+$/i,
                       message: 'Invalid email address'
                     }
                   })}
                   type="email"
                   className="form-input"
-                  placeholder="user@example.com"
+                  placeholder="john@example.com"
                 />
                 {errors.email && <p className="text-red-600 text-sm mt-1">{errors.email.message}</p>}
               </div>
@@ -228,13 +263,13 @@ export default function UserManagement({ organizations, users, onComplete }: Pro
                   {...register('password', { 
                     required: 'Password is required',
                     minLength: {
-                      value: 8,
-                      message: 'Password must be at least 8 characters'
+                      value: 6,
+                      message: 'Password must be at least 6 characters'
                     }
                   })}
                   type="password"
                   className="form-input"
-                  placeholder="Minimum 8 characters"
+                  placeholder="Enter password"
                 />
                 {errors.password && <p className="text-red-600 text-sm mt-1">{errors.password.message}</p>}
               </div>
@@ -243,13 +278,12 @@ export default function UserManagement({ organizations, users, onComplete }: Pro
                 <label className="form-label">Organization *</label>
                 <select
                   {...register('organizationId', { required: 'Organization is required' })}
-                  className="form-input"
+                  className="form-select"
+                  onChange={(e) => setSelectedOrg(e.target.value)}
                 >
                   <option value="">Select Organization</option>
                   {organizations.map(org => (
-                    <option key={org.id} value={org.id}>
-                      {org.name} ({org.type})
-                    </option>
+                    <option key={org.id} value={org.id}>{org.name}</option>
                   ))}
                 </select>
                 {errors.organizationId && <p className="text-red-600 text-sm mt-1">{errors.organizationId.message}</p>}
@@ -259,19 +293,18 @@ export default function UserManagement({ organizations, users, onComplete }: Pro
                 <label className="form-label">Role *</label>
                 <select
                   {...register('roleId', { required: 'Role is required' })}
-                  className="form-input"
-                  disabled={!orgRoles.length}
+                  className="form-select"
+                  disabled={!watchedOrgId}
                 >
-                  <option value="">
-                    {orgRoles.length ? 'Select Role' : 'Select organization first'}
-                  </option>
+                  <option value="">Select Role</option>
                   {orgRoles.map(role => (
-                    <option key={role.id} value={role.id}>
-                      {role.name} - {role.permissions.join(', ')}
-                    </option>
+                    <option key={role.id} value={role.id}>{role.name}</option>
                   ))}
                 </select>
                 {errors.roleId && <p className="text-red-600 text-sm mt-1">{errors.roleId.message}</p>}
+                {!watchedOrgId && (
+                  <p className="text-gray-500 text-sm mt-1">Select an organization first</p>
+                )}
               </div>
             </div>
 
@@ -281,7 +314,7 @@ export default function UserManagement({ organizations, users, onComplete }: Pro
                 disabled={loading}
                 className="btn btn-primary"
               >
-                {loading ? 'Creating User...' : 'Create User'}
+                {loading ? 'Creating...' : 'Create User'}
               </button>
             </div>
           </form>
@@ -289,72 +322,74 @@ export default function UserManagement({ organizations, users, onComplete }: Pro
       )}
 
       {activeTab === 'manage' && (
-        <div className="space-y-6">
-          <div className="card">
-            <h3 className="text-lg font-medium mb-4">Existing Users</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Total users: {users.length}
-            </p>
-            
+        <div className="card">
+          <h3 className="text-lg font-medium mb-4">Existing Users</h3>
+          
+          {users.length === 0 ? (
+            <p className="text-gray-500 text-center py-8">No users found</p>
+          ) : (
             <div className="space-y-4">
-              {users.map((user) => (
-                <div key={user.id} className="border rounded-lg p-4">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h4 className="font-medium text-gray-900">
-                        {user.user_metadata?.full_name || user.email}
-                      </h4>
-                      <p className="text-sm text-gray-600">{user.email}</p>
-                      <p className="text-xs text-gray-500">
-                        Created: {new Date(user.created_at).toLocaleDateString()}
-                      </p>
+              {users.map(user => (
+                <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div>
+                    <div className="font-medium">{user.email}</div>
+                    <div className="text-sm text-gray-500">
+                      Created: {new Date(user.created_at).toLocaleDateString()}
                     </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-4">
+                    <select
+                      className="form-select w-48"
+                      onChange={(e) => setSelectedOrg(e.target.value)}
+                      value={selectedOrg}
+                    >
+                      <option value="">Select Organization</option>
+                      {organizations.map(org => (
+                        <option key={org.id} value={org.id}>{org.name}</option>
+                      ))}
+                    </select>
                     
-                    <div className="flex space-x-2">
-                      <select
-                        className="text-sm border rounded px-2 py-1"
-                        onChange={(e) => setSelectedOrg(e.target.value)}
-                        value={selectedOrg}
-                      >
-                        <option value="">Select Organization</option>
-                        {organizations.map(org => (
-                          <option key={org.id} value={org.id}>
-                            {org.name}
-                          </option>
-                        ))}
-                      </select>
-                      
-                      {selectedOrg && (
-                        <select
-                          className="text-sm border rounded px-2 py-1"
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              assignUserToOrg(user.id, selectedOrg, e.target.value)
-                            }
-                          }}
-                        >
-                          <option value="">Assign Role</option>
-                          {orgRoles.map(role => (
-                            <option key={role.id} value={role.id}>
-                              {role.name}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
+                    <select
+                      className="form-select w-32"
+                      disabled={!selectedOrg}
+                    >
+                      <option value="">Select Role</option>
+                      {orgRoles.map(role => (
+                        <option key={role.id} value={role.id}>{role.name}</option>
+                      ))}
+                    </select>
+                    
+                    <button
+                      onClick={() => {
+                        // Handle assignment
+                        const orgSelect = document.querySelector(`select[value="${selectedOrg}"]`) as HTMLSelectElement
+                        const roleSelect = orgSelect?.nextElementSibling as HTMLSelectElement
+                        if (selectedOrg && roleSelect?.value) {
+                          assignUserToOrg(user.id, selectedOrg, roleSelect.value)
+                        }
+                      }}
+                      disabled={!selectedOrg || loading}
+                      className="btn btn-primary btn-sm"
+                    >
+                      Assign
+                    </button>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-
-          <div className="flex justify-end">
-            <button onClick={onComplete} className="btn btn-primary">
-              Complete Management
-            </button>
-          </div>
+          )}
         </div>
       )}
+
+      <div className="mt-8 flex justify-end">
+        <button
+          onClick={onComplete}
+          className="btn btn-secondary"
+        >
+          Back to Dashboard
+        </button>
+      </div>
     </div>
   )
 } 

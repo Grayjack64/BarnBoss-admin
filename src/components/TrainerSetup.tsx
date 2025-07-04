@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabaseAdmin } from '../lib/supabase'
 import { v4 as uuidv4 } from 'uuid'
 import toast from 'react-hot-toast'
 
@@ -40,21 +39,34 @@ export default function TrainerSetup({ onComplete }: Props) {
     setLoading(true)
     
     try {
-      // Create user
-      const { data: userData, error: userError } = await supabaseAdmin.auth.admin.createUser({
-        email: data.ownerEmail,
-        password: data.ownerPassword,
-        email_confirm: true,
-        user_metadata: { full_name: data.ownerName, role: 'trainer' }
+      // Create user via API
+      const userResponse = await fetch('/api/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: data.ownerEmail,
+          password: data.ownerPassword,
+          userData: { full_name: data.ownerName, role: 'trainer' }
+        })
       })
 
-      if (userError) throw userError
+      if (!userResponse.ok) {
+        const errorData = await userResponse.json()
+        throw new Error(errorData.error || 'Failed to create user')
+      }
 
-      // Create organization
+      const userData = await userResponse.json()
+
+      // Create organization via API
       const orgId = uuidv4()
-      const { data: orgData, error: orgError } = await supabaseAdmin
-        .from('organizations')
-        .insert({
+      const orgResponse = await fetch('/api/organizations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           id: orgId,
           name: data.name,
           type: 'trainer',
@@ -69,12 +81,16 @@ export default function TrainerSetup({ onComplete }: Props) {
           is_active: true,
           member_count: 1
         })
-        .select()
-        .single()
+      })
 
-      if (orgError) throw orgError
+      if (!orgResponse.ok) {
+        const errorData = await orgResponse.json()
+        throw new Error(errorData.error || 'Failed to create organization')
+      }
 
-      // Create roles
+      const orgData = await orgResponse.json()
+
+      // Create roles via API
       const rolesData = DEFAULT_TRAINER_ROLES.map(role => ({
         id: uuidv4(),
         organization_id: orgId,
@@ -87,32 +103,49 @@ export default function TrainerSetup({ onComplete }: Props) {
         can_manage_organization: role.permissions.indexOf('manage_organization') !== -1
       }))
 
-      const { data: roles, error: rolesError } = await supabaseAdmin
-        .from('roles')
-        .insert(rolesData)
-        .select()
+      const rolesResponse = await fetch('/api/roles', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(rolesData)
+      })
 
-      if (rolesError) throw rolesError
+      if (!rolesResponse.ok) {
+        const errorData = await rolesResponse.json()
+        throw new Error(errorData.error || 'Failed to create roles')
+      }
 
-      // Add owner to organization
-      const headTrainerRole = roles.find(r => r.name === 'Head Trainer')
-      await supabaseAdmin
-        .from('organization_members')
-        .insert({
+      const rolesResponseData = await rolesResponse.json()
+
+      // Add owner to organization via API
+      const headTrainerRole = rolesResponseData.roles.find((r: any) => r.name === 'Head Trainer')
+      const memberResponse = await fetch('/api/organization-members', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           id: uuidv4(),
           organization_id: orgId,
           user_id: userData.user.id,
           role_id: headTrainerRole?.id,
           is_active: true
         })
+      })
 
-      setCreated({ organization: orgData, user: userData.user })
+      if (!memberResponse.ok) {
+        const errorData = await memberResponse.json()
+        throw new Error(errorData.error || 'Failed to add owner to organization')
+      }
+
+      setCreated({ organization: orgData.organization, user: userData.user })
       setStep(2)
       toast.success('Trainer organization created successfully!')
       
-    } catch (error) {
+    } catch (error: any) {
       console.error(error)
-      toast.error('Failed to create trainer organization')
+      toast.error(error.message || 'Failed to create trainer organization')
     } finally {
       setLoading(false)
     }
@@ -212,7 +245,7 @@ export default function TrainerSetup({ onComplete }: Props) {
             <div className="sm:col-span-2">
               <label className="form-label">Password *</label>
               <input
-                {...register('ownerPassword', { required: 'Password is required', minLength: 8 })}
+                {...register('ownerPassword', { required: 'Password is required' })}
                 type="password"
                 className="form-input"
               />
@@ -221,8 +254,24 @@ export default function TrainerSetup({ onComplete }: Props) {
           </div>
         </div>
 
+        <div className="card">
+          <h3 className="text-lg font-medium mb-4">Default Roles</h3>
+          <div className="grid grid-cols-2 gap-4">
+            {DEFAULT_TRAINER_ROLES.map((role, index) => (
+              <div key={index} className="flex items-center">
+                <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: role.color }} />
+                <span className="text-sm">{role.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="flex justify-end">
-          <button type="submit" disabled={loading} className="btn btn-primary">
+          <button
+            type="submit"
+            disabled={loading}
+            className="btn btn-primary"
+          >
             {loading ? 'Creating...' : 'Create Trainer Organization'}
           </button>
         </div>

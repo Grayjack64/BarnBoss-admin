@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabaseAdmin, Organization, User } from '../lib/supabase'
+import { Organization, User } from '../lib/supabase'
 import { BuildingOfficeIcon, UserIcon, AcademicCapIcon } from '@heroicons/react/24/outline'
 import OrganizationSetup from './OrganizationSetup'
 import TrainerSetup from './TrainerSetup'
@@ -24,20 +24,17 @@ export default function Dashboard() {
     try {
       setLoading(true)
       
-      // Load organizations
-      const { data: orgsData, error: orgsError } = await supabaseAdmin
-        .from('organizations')
-        .select('*')
-        .order('created_at', { ascending: false })
+      // Load organizations via API
+      const orgsResponse = await fetch('/api/organizations')
+      if (!orgsResponse.ok) throw new Error('Failed to fetch organizations')
+      const orgsData = await orgsResponse.json()
       
-      if (orgsError) throw orgsError
+      // Load users via API
+      const usersResponse = await fetch('/api/users')
+      if (!usersResponse.ok) throw new Error('Failed to fetch users')
+      const usersData = await usersResponse.json()
       
-      // Load users
-      const { data: usersData, error: usersError } = await supabaseAdmin.auth.admin.listUsers()
-      
-      if (usersError) throw usersError
-      
-      setOrganizations(orgsData || [])
+      setOrganizations(orgsData.organizations || [])
       setUsers(usersData.users || [])
     } catch (error) {
       console.error('Error loading data:', error)
@@ -202,12 +199,12 @@ export default function Dashboard() {
 
         <div className="card">
           <div className="text-center">
-            <UserIcon className="mx-auto h-12 w-12 text-ranch-sage" />
+            <UserIcon className="mx-auto h-12 w-12 text-ranch-forest" />
             <h3 className="mt-4 text-lg font-medium text-gray-900">
               User Management
             </h3>
             <p className="mt-2 text-sm text-gray-600">
-              Manage existing users, assign roles, and set up user accounts for organizations.
+              Manage user accounts, permissions, and organization memberships.
             </p>
             <button
               onClick={() => setActiveSetup('user')}
@@ -219,51 +216,47 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Recent Organizations */}
-      {organizations.length > 0 && (
-        <div className="mt-8">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Recent Organizations</h2>
-          <div className="bg-white shadow overflow-hidden sm:rounded-md">
-            <ul className="divide-y divide-gray-200">
-              {organizations.slice(0, 5).map((org) => (
-                <li key={org.id} className="px-6 py-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className="flex-shrink-0 h-10 w-10">
-                        <div className="h-10 w-10 rounded-full bg-ranch-burnt-sienna flex items-center justify-center">
-                          <span className="text-sm font-medium text-white">
-                            {org.name.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="ml-4">
-                        <div className="flex items-center">
-                          <div className="text-sm font-medium text-gray-900">
-                            {org.name}
-                          </div>
-                          <div className="ml-2 flex-shrink-0 flex">
-                            <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              org.type === 'trainer' ? 'bg-ranch-olive text-white' : 'bg-ranch-burnt-sienna text-white'
-                            }`}>
-                              {org.type}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {org.member_count} members • {org.subscription_tier}
-                        </div>
-                      </div>
+      {/* Recent Activity */}
+      <div className="mt-8">
+        <h2 className="text-lg font-medium text-gray-900 mb-4">Recent Organizations</h2>
+        <div className="bg-white shadow overflow-hidden sm:rounded-md">
+          <ul className="divide-y divide-gray-200">
+            {organizations.slice(0, 5).map((org) => (
+              <li key={org.id} className="px-6 py-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <BuildingOfficeIcon className="h-6 w-6 text-gray-400" />
                     </div>
-                    <div className="text-sm text-gray-500">
-                      {new Date(org.created_at).toLocaleDateString()}
+                    <div className="ml-4">
+                      <div className="text-sm font-medium text-gray-900">
+                        {org.name}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {org.type} • {org.member_count} members
+                      </div>
                     </div>
                   </div>
-                </li>
-              ))}
-            </ul>
-          </div>
+                  <div className="flex items-center">
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                      org.is_active 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      {org.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+                </div>
+              </li>
+            ))}
+            {organizations.length === 0 && (
+              <li className="px-6 py-4 text-center text-gray-500">
+                No organizations found
+              </li>
+            )}
+          </ul>
         </div>
-      )}
+      </div>
     </div>
   )
 } 

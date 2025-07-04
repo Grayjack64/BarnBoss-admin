@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabaseAdmin } from '../lib/supabase'
 import { v4 as uuidv4 } from 'uuid'
 import toast from 'react-hot-toast'
 
@@ -74,19 +73,28 @@ export default function OrganizationSetup({ onComplete }: Props) {
 
   const createOwnerAccount = async (data: OrganizationFormData) => {
     try {
-      // Create user account
-      const { data: userData, error: userError } = await supabaseAdmin.auth.admin.createUser({
-        email: data.ownerEmail,
-        password: data.ownerPassword,
-        email_confirm: true,
-        user_metadata: {
-          full_name: data.ownerName,
-          role: 'owner'
-        }
+      // Create user account via API
+      const response = await fetch('/api/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: data.ownerEmail,
+          password: data.ownerPassword,
+          userData: {
+            full_name: data.ownerName,
+            role: 'owner'
+          }
+        })
       })
 
-      if (userError) throw userError
-      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to create user')
+      }
+
+      const userData = await response.json()
       setCreatedUser(userData.user)
       return userData.user
     } catch (error) {
@@ -99,10 +107,13 @@ export default function OrganizationSetup({ onComplete }: Props) {
     try {
       const orgId = uuidv4()
       
-      // Create organization
-      const { data: orgData, error: orgError } = await supabaseAdmin
-        .from('organizations')
-        .insert({
+      // Create organization via API
+      const response = await fetch('/api/organizations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           id: orgId,
           name: data.name,
           type: data.type,
@@ -121,13 +132,16 @@ export default function OrganizationSetup({ onComplete }: Props) {
           is_active: true,
           member_count: 1
         })
-        .select()
-        .single()
+      })
 
-      if (orgError) throw orgError
-      
-      setCreatedOrganization(orgData)
-      return orgData
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to create organization')
+      }
+
+      const orgData = await response.json()
+      setCreatedOrganization(orgData.organization)
+      return orgData.organization
     } catch (error) {
       console.error('Error creating organization:', error)
       throw error
@@ -151,14 +165,21 @@ export default function OrganizationSetup({ onComplete }: Props) {
         color: role.color
       }))
 
-      const { data: createdRoles, error: rolesError } = await supabaseAdmin
-        .from('roles')
-        .insert(rolesData)
-        .select()
+      const response = await fetch('/api/roles', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(rolesData)
+      })
 
-      if (rolesError) throw rolesError
-      
-      return createdRoles
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to create roles')
+      }
+
+      const responseData = await response.json()
+      return responseData.roles
     } catch (error) {
       console.error('Error creating roles:', error)
       throw error
@@ -176,17 +197,24 @@ export default function OrganizationSetup({ onComplete }: Props) {
 
       if (!adminRole) throw new Error('Admin role not found')
 
-      const { error: memberError } = await supabaseAdmin
-        .from('organization_members')
-        .insert({
+      const response = await fetch('/api/organization-members', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           id: uuidv4(),
           organization_id: organizationId,
           user_id: ownerId,
           role_id: adminRole.id,
           is_active: true
         })
+      })
 
-      if (memberError) throw memberError
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to add owner to organization')
+      }
     } catch (error) {
       console.error('Error adding owner to organization:', error)
       throw error
@@ -197,18 +225,30 @@ export default function OrganizationSetup({ onComplete }: Props) {
     try {
       const accountType = data.type === 'trainer' ? 'trainer' : 'organization'
       
-      const { error: profileError } = await supabaseAdmin
-        .from('user_account_profiles')
-        .insert({
-          id: uuidv4(),
-          user_id: userId,
+      const response = await fetch('/api/profiles', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: userId,
+          full_name: data.ownerName,
+          email: data.ownerEmail,
           account_type: accountType,
-          display_name: data.ownerName,
-          bio: `${data.ownerName} - ${data.type} owner`,
-          is_active: true
+          is_active: true,
+          preferences: {
+            notifications: {
+              email: true,
+              push: true
+            }
+          }
         })
+      })
 
-      if (profileError) throw profileError
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to create user profile')
+      }
     } catch (error) {
       console.error('Error creating user profile:', error)
       throw error
@@ -216,16 +256,16 @@ export default function OrganizationSetup({ onComplete }: Props) {
   }
 
   const onSubmit = async (data: OrganizationFormData) => {
-    setLoading(true)
-    
     try {
+      setLoading(true)
+      
       // Step 1: Create owner account
       const user = await createOwnerAccount(data)
       
       // Step 2: Create organization
       const organization = await createOrganization(data, user.id)
       
-      // Step 3: Create default roles
+      // Step 3: Create roles
       const roles = await createRoles(organization.id, data.type)
       
       // Step 4: Add owner to organization
@@ -237,9 +277,9 @@ export default function OrganizationSetup({ onComplete }: Props) {
       toast.success('Organization created successfully!')
       setStep(2)
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating organization:', error)
-      toast.error(`Failed to create organization: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      toast.error(error.message || 'Failed to create organization')
     } finally {
       setLoading(false)
     }
@@ -248,57 +288,36 @@ export default function OrganizationSetup({ onComplete }: Props) {
   if (step === 2) {
     return (
       <div className="max-w-2xl mx-auto">
-        <div className="text-center mb-8">
-          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
-            <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900">Organization Created Successfully!</h2>
-          <p className="mt-2 text-sm text-gray-600">
-            Your organization has been set up with all necessary components.
-          </p>
-        </div>
-
-        <div className="bg-white shadow sm:rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-              Setup Summary
-            </h3>
-            
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-sm font-medium text-gray-500">Organization Name:</span>
-                <span className="text-sm text-gray-900">{createdOrganization?.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm font-medium text-gray-500">Type:</span>
-                <span className="text-sm text-gray-900 capitalize">{createdOrganization?.type}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm font-medium text-gray-500">Owner Email:</span>
-                <span className="text-sm text-gray-900">{createdUser?.email}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm font-medium text-gray-500">Subscription Tier:</span>
-                <span className="text-sm text-gray-900 capitalize">{createdOrganization?.subscription_tier}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm font-medium text-gray-500">Default Roles Created:</span>
-                <span className="text-sm text-gray-900">
-                  {DEFAULT_ROLES[createdOrganization?.type as keyof typeof DEFAULT_ROLES]?.length || 0} roles
-                </span>
+        <div className="bg-green-50 border border-green-200 rounded-lg p-6">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-green-800">
+                Organization Created Successfully!
+              </h3>
+              <div className="mt-2 text-sm text-green-700">
+                <p>Your organization has been created with the following details:</p>
+                <ul className="mt-2 space-y-1">
+                  <li><strong>Name:</strong> {createdOrganization?.name}</li>
+                  <li><strong>Type:</strong> {createdOrganization?.type}</li>
+                  <li><strong>Owner:</strong> {createdUser?.email}</li>
+                  <li><strong>Organization ID:</strong> {createdOrganization?.id}</li>
+                </ul>
               </div>
             </div>
           </div>
         </div>
-
-        <div className="mt-6 flex justify-end">
+        
+        <div className="mt-6 flex justify-center">
           <button
             onClick={onComplete}
             className="btn btn-primary"
           >
-            Complete Setup
+            Continue to Dashboard
           </button>
         </div>
       </div>
@@ -310,197 +329,254 @@ export default function OrganizationSetup({ onComplete }: Props) {
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-gray-900">Organization Setup</h2>
         <p className="mt-2 text-sm text-gray-600">
-          Create a new organization with complete setup including owner account and default roles.
+          Create a new organization with an owner account and default roles
         </p>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        <div className="bg-white shadow sm:rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-              Organization Details
-            </h3>
-            
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-              <div>
-                <label className="form-label">Organization Name *</label>
-                <input
-                  {...register('name', { required: 'Organization name is required' })}
-                  className="form-input"
-                  placeholder="Enter organization name"
-                />
-                {errors.name && (
-                  <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
-                )}
-              </div>
+        {/* Organization Details */}
+        <div className="card">
+          <div className="border-b border-gray-200 pb-4 mb-4">
+            <h3 className="text-lg font-medium text-gray-900">Organization Details</h3>
+          </div>
+          
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            <div>
+              <label htmlFor="name" className="form-label">
+                Organization Name *
+              </label>
+              <input
+                {...register('name', { required: 'Organization name is required' })}
+                type="text"
+                id="name"
+                className="form-input"
+                placeholder="Enter organization name"
+              />
+              {errors.name && (
+                <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
+              )}
+            </div>
 
-              <div>
-                <label className="form-label">Organization Type *</label>
-                <select
-                  {...register('type', { required: 'Organization type is required' })}
-                  className="form-input"
-                >
-                  <option value="organization">Organization</option>
-                  <option value="stable">Stable</option>
-                  <option value="trainer">Trainer</option>
-                  <option value="enterprise">Enterprise</option>
-                </select>
-                {errors.type && (
-                  <p className="mt-1 text-sm text-red-600">{errors.type.message}</p>
-                )}
-              </div>
+            <div>
+              <label htmlFor="type" className="form-label">
+                Organization Type *
+              </label>
+              <select
+                {...register('type', { required: 'Organization type is required' })}
+                id="type"
+                className="form-select"
+              >
+                <option value="organization">General Organization</option>
+                <option value="stable">Stable</option>
+                <option value="trainer">Trainer</option>
+                <option value="enterprise">Enterprise</option>
+              </select>
+              {errors.type && (
+                <p className="mt-1 text-sm text-red-600">{errors.type.message}</p>
+              )}
+            </div>
 
-              <div className="sm:col-span-2">
-                <label className="form-label">Description</label>
-                <textarea
-                  {...register('description')}
-                  rows={3}
-                  className="form-input"
-                  placeholder="Brief description of the organization"
-                />
-              </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="description" className="form-label">
+                Description
+              </label>
+              <textarea
+                {...register('description')}
+                id="description"
+                rows={3}
+                className="form-textarea"
+                placeholder="Brief description of the organization"
+              />
+            </div>
 
-              <div>
-                <label className="form-label">Email</label>
-                <input
-                  {...register('email')}
-                  type="email"
-                  className="form-input"
-                  placeholder="organization@example.com"
-                />
-              </div>
+            <div>
+              <label htmlFor="email" className="form-label">
+                Organization Email *
+              </label>
+              <input
+                {...register('email', { 
+                  required: 'Email is required',
+                  pattern: {
+                    value: /^\S+@\S+$/i,
+                    message: 'Invalid email address'
+                  }
+                })}
+                type="email"
+                id="email"
+                className="form-input"
+                placeholder="contact@organization.com"
+              />
+              {errors.email && (
+                <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
+              )}
+            </div>
 
-              <div>
-                <label className="form-label">Phone</label>
-                <input
-                  {...register('phone')}
-                  type="tel"
-                  className="form-input"
-                  placeholder="(555) 123-4567"
-                />
-              </div>
+            <div>
+              <label htmlFor="phone" className="form-label">
+                Phone Number
+              </label>
+              <input
+                {...register('phone')}
+                type="tel"
+                id="phone"
+                className="form-input"
+                placeholder="(555) 123-4567"
+              />
+            </div>
 
-              <div className="sm:col-span-2">
-                <label className="form-label">Address</label>
-                <input
-                  {...register('address')}
-                  className="form-input"
-                  placeholder="Street address, city, state, zip"
-                />
-              </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="address" className="form-label">
+                Address
+              </label>
+              <input
+                {...register('address')}
+                type="text"
+                id="address"
+                className="form-input"
+                placeholder="123 Main Street, City, State, ZIP"
+              />
+            </div>
 
-              <div>
-                <label className="form-label">Website</label>
-                <input
-                  {...register('website')}
-                  type="url"
-                  className="form-input"
-                  placeholder="https://example.com"
-                />
-              </div>
+            <div>
+              <label htmlFor="website" className="form-label">
+                Website
+              </label>
+              <input
+                {...register('website')}
+                type="url"
+                id="website"
+                className="form-input"
+                placeholder="https://www.organization.com"
+              />
+            </div>
 
-              <div>
-                <label className="form-label">Subscription Tier *</label>
-                <select
-                  {...register('subscriptionTier', { required: 'Subscription tier is required' })}
-                  className="form-input"
-                >
-                  <option value="basic">Basic</option>
-                  <option value="premium">Premium</option>
-                  <option value="enterprise">Enterprise</option>
-                </select>
-              </div>
+            <div>
+              <label htmlFor="subscriptionTier" className="form-label">
+                Subscription Tier *
+              </label>
+              <select
+                {...register('subscriptionTier', { required: 'Subscription tier is required' })}
+                id="subscriptionTier"
+                className="form-select"
+              >
+                <option value="basic">Basic</option>
+                <option value="premium">Premium</option>
+                <option value="enterprise">Enterprise</option>
+              </select>
+              {errors.subscriptionTier && (
+                <p className="mt-1 text-sm text-red-600">{errors.subscriptionTier.message}</p>
+              )}
             </div>
           </div>
         </div>
 
-        <div className="bg-white shadow sm:rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-              Owner Account
-            </h3>
-            
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-              <div>
-                <label className="form-label">Owner Name *</label>
-                <input
-                  {...register('ownerName', { required: 'Owner name is required' })}
-                  className="form-input"
-                  placeholder="Full name of the owner"
-                />
-                {errors.ownerName && (
-                  <p className="mt-1 text-sm text-red-600">{errors.ownerName.message}</p>
-                )}
-              </div>
+        {/* Owner Account */}
+        <div className="card">
+          <div className="border-b border-gray-200 pb-4 mb-4">
+            <h3 className="text-lg font-medium text-gray-900">Owner Account</h3>
+            <p className="mt-1 text-sm text-gray-600">
+              Create an account for the organization owner
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            <div>
+              <label htmlFor="ownerName" className="form-label">
+                Owner Name *
+              </label>
+              <input
+                {...register('ownerName', { required: 'Owner name is required' })}
+                type="text"
+                id="ownerName"
+                className="form-input"
+                placeholder="John Doe"
+              />
+              {errors.ownerName && (
+                <p className="mt-1 text-sm text-red-600">{errors.ownerName.message}</p>
+              )}
+            </div>
 
-              <div>
-                <label className="form-label">Owner Email *</label>
-                <input
-                  {...register('ownerEmail', { 
-                    required: 'Owner email is required',
-                    pattern: {
-                      value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                      message: 'Invalid email address'
-                    }
-                  })}
-                  type="email"
-                  className="form-input"
-                  placeholder="owner@example.com"
-                />
-                {errors.ownerEmail && (
-                  <p className="mt-1 text-sm text-red-600">{errors.ownerEmail.message}</p>
-                )}
-              </div>
+            <div>
+              <label htmlFor="ownerEmail" className="form-label">
+                Owner Email *
+              </label>
+              <input
+                {...register('ownerEmail', { 
+                  required: 'Owner email is required',
+                  pattern: {
+                    value: /^\S+@\S+$/i,
+                    message: 'Invalid email address'
+                  }
+                })}
+                type="email"
+                id="ownerEmail"
+                className="form-input"
+                placeholder="john@example.com"
+              />
+              {errors.ownerEmail && (
+                <p className="mt-1 text-sm text-red-600">{errors.ownerEmail.message}</p>
+              )}
+            </div>
 
-              <div className="sm:col-span-2">
-                <label className="form-label">Owner Password *</label>
-                <input
-                  {...register('ownerPassword', { 
-                    required: 'Owner password is required',
-                    minLength: {
-                      value: 8,
-                      message: 'Password must be at least 8 characters'
-                    }
-                  })}
-                  type="password"
-                  className="form-input"
-                  placeholder="Minimum 8 characters"
-                />
-                {errors.ownerPassword && (
-                  <p className="mt-1 text-sm text-red-600">{errors.ownerPassword.message}</p>
-                )}
-              </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="ownerPassword" className="form-label">
+                Owner Password *
+              </label>
+              <input
+                {...register('ownerPassword', { 
+                  required: 'Password is required',
+                  minLength: {
+                    value: 6,
+                    message: 'Password must be at least 6 characters'
+                  }
+                })}
+                type="password"
+                id="ownerPassword"
+                className="form-input"
+                placeholder="Enter secure password"
+              />
+              {errors.ownerPassword && (
+                <p className="mt-1 text-sm text-red-600">{errors.ownerPassword.message}</p>
+              )}
             </div>
           </div>
         </div>
 
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h4 className="text-sm font-medium text-blue-900 mb-2">
-            Default Roles for {organizationType}:
-          </h4>
-          <div className="space-y-1">
-            {DEFAULT_ROLES[organizationType as keyof typeof DEFAULT_ROLES]?.map((role, index) => (
-              <div key={index} className="flex items-center text-sm text-blue-800">
-                <div 
-                  className="w-3 h-3 rounded-full mr-2" 
+        {/* Default Roles Preview */}
+        <div className="card">
+          <div className="border-b border-gray-200 pb-4 mb-4">
+            <h3 className="text-lg font-medium text-gray-900">Default Roles</h3>
+            <p className="mt-1 text-sm text-gray-600">
+              These roles will be created for your {organizationType}
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {(DEFAULT_ROLES[organizationType as keyof typeof DEFAULT_ROLES] || DEFAULT_ROLES.organization).map((role, index) => (
+              <div key={index} className="flex items-center p-3 border rounded-lg">
+                <div
+                  className="w-4 h-4 rounded-full mr-3"
                   style={{ backgroundColor: role.color }}
                 />
-                <span className="font-medium">{role.name}</span>
-                <span className="ml-2 text-blue-600">
-                  ({role.permissions.join(', ')})
-                </span>
+                <div>
+                  <div className="font-medium text-sm">{role.name}</div>
+                  <div className="text-xs text-gray-500">
+                    {role.permissions.length} permissions
+                  </div>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
+        {/* Submit Button */}
         <div className="flex justify-end">
           <button
             type="submit"
             disabled={loading}
             className="btn btn-primary"
           >
-            {loading ? 'Creating Organization...' : 'Create Organization'}
+            {loading ? 'Creating...' : 'Create Organization'}
           </button>
         </div>
       </form>
