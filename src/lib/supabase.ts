@@ -2,19 +2,19 @@ import { createClient } from '@supabase/supabase-js'
 import { User } from '@supabase/auth-js'
 
 // Environment variable validation with detailed error messages
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 // Validate environment variables
 if (!supabaseUrl) {
-  console.error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable')
-  throw new Error('NEXT_PUBLIC_SUPABASE_URL is required but not set')
+  console.error('Missing Supabase URL. Checked: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_URL')
+  throw new Error('Supabase URL is required but not set. Please set NEXT_PUBLIC_SUPABASE_URL.')
 }
 
 if (!supabaseAnonKey) {
-  console.error('Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable')
-  throw new Error('NEXT_PUBLIC_SUPABASE_ANON_KEY is required but not set')
+  console.error('Missing Supabase anon key. Checked: NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_ANON_KEY')
+  throw new Error('Supabase anon key is required but not set. Please set NEXT_PUBLIC_SUPABASE_ANON_KEY.')
 }
 
 if (!supabaseServiceRoleKey && typeof window === 'undefined') {
@@ -25,9 +25,12 @@ if (!supabaseServiceRoleKey && typeof window === 'undefined') {
 
 // Debug logging for environment variables (only in development)
 if (process.env.NODE_ENV === 'development') {
-  console.log('Supabase URL:', supabaseUrl?.substring(0, 30) + '...')
-  console.log('Supabase Anon Key:', supabaseAnonKey?.substring(0, 20) + '...')
-  console.log('Service Role Key available:', !!supabaseServiceRoleKey)
+  console.log('Environment variables loaded:')
+  console.log('- Supabase URL:', supabaseUrl?.substring(0, 30) + '...')
+  console.log('- Supabase Anon Key:', supabaseAnonKey?.substring(0, 20) + '...')
+  console.log('- Service Role Key available:', !!supabaseServiceRoleKey)
+  console.log('- Source URL:', process.env.NEXT_PUBLIC_SUPABASE_URL ? 'NEXT_PUBLIC_SUPABASE_URL' : 'SUPABASE_URL')
+  console.log('- Source Key:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'NEXT_PUBLIC_SUPABASE_ANON_KEY' : 'SUPABASE_ANON_KEY')
 }
 
 // Client for regular operations
