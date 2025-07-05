@@ -105,6 +105,7 @@ export default function HorseManagement({
   const [loading, setLoading] = useState(false)
   const [existingHorses, setExistingHorses] = useState<Horse[]>([])
   const [loadingExisting, setLoadingExisting] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
 
   const { register, control, handleSubmit, formState: { errors } } = useForm<HorseFormData>({
     defaultValues: {
@@ -128,21 +129,33 @@ export default function HorseManagement({
 
     try {
       setLoadingExisting(true)
-      let query = supabase.from('horses').select('*')
-
+      
+      const params = new URLSearchParams()
       if (selectedOrganizationId) {
-        query = query.eq('organization_id', selectedOrganizationId)
-      } else if (selectedUserId) {
-        query = query.eq('user_id', selectedUserId)
+        params.append('organization_id', selectedOrganizationId)
+      }
+      if (selectedUserId) {
+        params.append('user_id', selectedUserId)
       }
 
-      const { data, error } = await query.order('created_at', { ascending: false })
+      const response = await fetch(`/api/business-setup/horses/existing?${params.toString()}`)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
 
-      if (error) throw error
-      setExistingHorses(data || [])
+      const data = await response.json()
+      
+      if (data.error) {
+        throw new Error(data.error)
+      }
+
+      setExistingHorses(data.horses || [])
+      console.log(`Loaded ${data.count || 0} existing horses`)
+      
     } catch (error) {
       console.error('Error loading existing horses:', error)
-      toast.error('Failed to load existing horses')
+      toast.error('Failed to load existing horses: ' + (error instanceof Error ? error.message : 'Unknown error'))
     } finally {
       setLoadingExisting(false)
     }
@@ -211,6 +224,15 @@ export default function HorseManagement({
     }
   }
 
+  // Filter existing horses based on search term
+  const filteredHorses = existingHorses.filter(horse => 
+    horse.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    horse.nickname?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    horse.registered_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    horse.breed?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    horse.registration_number?.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+
   if (!selectedUserId && !selectedOrganizationId) {
     return (
       <div className="max-w-4xl mx-auto p-6">
@@ -271,52 +293,121 @@ export default function HorseManagement({
       </div>
 
       {/* Existing Horses */}
-      {existingHorses.length > 0 && (
+      {(existingHorses.length > 0 || loadingExisting) && (
         <div className="mb-8">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Existing Horses</h2>
-          <div className="bg-white rounded-lg shadow border overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Breed</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gender</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Color</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {existingHorses.map((horse) => (
-                    <tr key={horse.id}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">{horse.name}</div>
-                          {horse.nickname && (
-                            <div className="text-sm text-gray-500">"{horse.nickname}"</div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{horse.breed}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{horse.gender}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          horse.status === 'active' 
-                            ? 'bg-green-100 text-green-800'
-                            : horse.status === 'injured'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {horse.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{horse.color}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-gray-900">
+              Existing Horses 
+              {!loadingExisting && <span className="text-sm font-normal text-gray-600 ml-2">({existingHorses.length} total)</span>}
+            </h2>
+            
+            {existingHorses.length > 0 && (
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search horses by name, breed, or registration..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-2 top-2 text-gray-400 hover:text-gray-600"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            )}
           </div>
+
+          {loadingExisting ? (
+            <div className="bg-white rounded-lg shadow border p-8 text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading existing horses...</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg shadow border overflow-hidden">
+              {filteredHorses.length === 0 ? (
+                <div className="p-6 text-center text-gray-500">
+                  {searchTerm ? `No horses found matching "${searchTerm}"` : 'No horses found for this organization.'}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Breed</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gender</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Registration</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Added</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {filteredHorses.map((horse) => (
+                        <tr key={horse.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{horse.name}</div>
+                              {horse.nickname && (
+                                <div className="text-sm text-gray-500">"{horse.nickname}"</div>
+                              )}
+                              {horse.registered_name && horse.registered_name !== horse.name && (
+                                <div className="text-xs text-gray-400">Reg: {horse.registered_name}</div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">{horse.breed || '-'}</div>
+                            {horse.color && (
+                              <div className="text-xs text-gray-500">{horse.color}</div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900 capitalize">{horse.gender}</div>
+                            {horse.birth_date && (
+                              <div className="text-xs text-gray-500">
+                                Born {new Date(horse.birth_date).getFullYear()}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              horse.status === 'active' 
+                                ? 'bg-green-100 text-green-800'
+                                : horse.status === 'injured'
+                                ? 'bg-red-100 text-red-800'
+                                : horse.status === 'retired'
+                                ? 'bg-gray-100 text-gray-800'
+                                : 'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {horse.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">
+                              {horse.registration_number || '-'}
+                            </div>
+                            {horse.microchip_number && (
+                              <div className="text-xs text-gray-500">
+                                Chip: {horse.microchip_number}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {horse.created_at && new Date(horse.created_at).toLocaleDateString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
