@@ -8,7 +8,7 @@ import toast from 'react-hot-toast'
 
 interface UserSelectorProps {
   onBack: () => void
-  onUserSelected: (userId: string, organizationId: string | null) => void
+  onUserSelected: (userId: string, organizationId: string | null, userEmail: string, orgName: string | null) => void
   selectedUserId: string | null
   selectedOrganizationId: string | null
 }
@@ -116,8 +116,12 @@ export default function UserSelector({
 
   const handleSelectUser = (user: ExtendedUserProfile, organizationId?: string) => {
     const orgId = organizationId || user.organizations?.[0]?.id || null
-    onUserSelected(user.id, orgId)
-    toast.success(`Selected ${user.full_name || user.email}${orgId ? ' for organization' : ''}`)
+    const orgName = organizationId 
+      ? user.organizations?.find(org => org.id === organizationId)?.name || null
+      : user.organizations?.[0]?.name || null
+    
+    onUserSelected(user.id, orgId, user.email, orgName)
+    toast.success(`Selected ${user.full_name || user.email}${orgName ? ` (${orgName})` : ''}`)
   }
 
   const formatDate = (dateString: string) => {

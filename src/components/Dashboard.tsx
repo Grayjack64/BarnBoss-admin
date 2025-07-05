@@ -3,12 +3,12 @@
 import React, { useState, useEffect } from 'react'
 import { Organization, User } from '../lib/supabase'
 import { BuildingOfficeIcon, UserIcon, AcademicCapIcon } from '@heroicons/react/24/outline'
-import { supabase, validateSupabaseClients } from '../lib/supabase'
+import { validateSupabaseClients } from '../lib/supabase'
 import OrganizationSetup from './OrganizationSetup'
 import TrainerSetup from './TrainerSetup'
 import UserManagement from './UserManagement'
 import toast from 'react-hot-toast'
-import { Building2, Users, UserPlus, BarChart3, Shield, MapPin, Package, DollarSign, ClipboardList, UserSearch } from 'lucide-react'
+import { Building2, Users, UserPlus, BarChart3, Shield, MapPin, Package, DollarSign, ClipboardList, UserSearch, CheckCircle } from 'lucide-react'
 import UserSelector from './UserSelector'
 import HorseManagement from './HorseManagement'
 import ConsumableManagement from './ConsumableManagement'
@@ -26,13 +26,32 @@ type ActiveComponent =
   | 'consumable-management'
   | 'service-pricing'
 
+interface DashboardStats {
+  totalOrganizations: number
+  trainerOrganizations: number
+  stableOrganizations: number
+  enterpriseOrganizations: number
+  totalUsers: number
+  organizations: Organization[]
+  users: User[]
+}
+
 export default function Dashboard() {
   const [activeComponent, setActiveComponent] = useState<ActiveComponent>('dashboard')
-  const [organizations, setOrganizations] = useState<Organization[]>([])
-  const [users, setUsers] = useState<User[]>([])
+  const [stats, setStats] = useState<DashboardStats>({
+    totalOrganizations: 0,
+    trainerOrganizations: 0,
+    stableOrganizations: 0,
+    enterpriseOrganizations: 0,
+    totalUsers: 0,
+    organizations: [],
+    users: []
+  })
   const [loading, setLoading] = useState(true)
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
   const [selectedOrganizationId, setSelectedOrganizationId] = useState<string | null>(null)
+  const [selectedUserEmail, setSelectedUserEmail] = useState<string | null>(null)
+  const [selectedOrgName, setSelectedOrgName] = useState<string | null>(null)
 
   useEffect(() => {
     // Validate Supabase clients on component mount
@@ -58,37 +77,21 @@ export default function Dashboard() {
   const loadDashboardData = async () => {
     setLoading(true)
     try {
-      // Load organizations
-      const { data: orgs, error: orgError } = await supabase
-        .from('organizations')
-        .select(`
-          *,
-          organization_members(count)
-        `)
-        .order('created_at', { ascending: false })
-
-      if (orgError) throw orgError
-
-      // Transform the data to include member count
-      const organizationsWithCount = orgs?.map(org => ({
-        ...org,
-        member_count: org.organization_members?.[0]?.count || 0
-      })) || []
-
-      setOrganizations(organizationsWithCount)
-
-      // Load users
-      const { data: usersData, error: usersError } = await supabase
-        .from('user_account_profiles')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (usersError) throw usersError
-      setUsers(usersData || [])
-
+      const response = await fetch('/api/dashboard')
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const data = await response.json()
+      if (data.error) {
+        throw new Error(data.error)
+      }
+      
+      setStats(data.stats)
+      console.log('Dashboard data loaded:', data.stats)
     } catch (error) {
-      console.error('Error loading data:', error)
-      toast.error('Failed to load dashboard data')
+      console.error('Error loading dashboard data:', error)
+      toast.error('Failed to load dashboard data: ' + (error instanceof Error ? error.message : 'Unknown error'))
     } finally {
       setLoading(false)
     }
@@ -98,6 +101,15 @@ export default function Dashboard() {
     setActiveComponent('dashboard')
     loadDashboardData()
     toast.success('Setup completed successfully!')
+  }
+
+  const handleUserSelected = (userId: string, organizationId: string | null, userEmail: string, orgName: string | null) => {
+    setSelectedUserId(userId)
+    setSelectedOrganizationId(organizationId)
+    setSelectedUserEmail(userEmail)
+    setSelectedOrgName(orgName)
+    setActiveComponent('dashboard')
+    toast.success(`Selected user: ${userEmail}${orgName ? ` (${orgName})` : ''}`)
   }
 
   const renderStatsGrid = () => (
@@ -114,7 +126,7 @@ export default function Dashboard() {
                   Total Organizations
                 </dt>
                 <dd className="text-lg font-medium text-gray-900">
-                  {organizations.length}
+                  {loading ? '...' : stats.totalOrganizations}
                 </dd>
               </dl>
             </div>
@@ -134,7 +146,7 @@ export default function Dashboard() {
                   Trainer Organizations
                 </dt>
                 <dd className="text-lg font-medium text-gray-900">
-                  {organizations.filter(org => org.type === 'trainer').length}
+                  {loading ? '...' : stats.trainerOrganizations}
                 </dd>
               </dl>
             </div>
@@ -154,7 +166,7 @@ export default function Dashboard() {
                   Total Users
                 </dt>
                 <dd className="text-lg font-medium text-gray-900">
-                  {users.length}
+                  {loading ? '...' : stats.totalUsers}
                 </dd>
               </dl>
             </div>
@@ -220,30 +232,80 @@ export default function Dashboard() {
         Set up complete business operations for existing users including horses, consumables, and service pricing.
       </p>
       
+      {/* Selected User Display */}
+      {selectedUserId && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-medium text-green-900 mb-1">
+                <CheckCircle className="inline h-4 w-4 mr-1" />
+                User Selected for Business Setup
+              </h3>
+              <div className="text-sm text-green-700">
+                <p><strong>Email:</strong> {selectedUserEmail}</p>
+                {selectedOrgName && <p><strong>Organization:</strong> {selectedOrgName}</p>}
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setSelectedUserId(null)
+                setSelectedOrganizationId(null)
+                setSelectedUserEmail(null)
+                setSelectedOrgName(null)
+                toast.success('Selection cleared')
+              }}
+              className="text-sm text-green-600 hover:text-green-800 underline"
+            >
+              Change User
+            </button>
+          </div>
+        </div>
+      )}
+      
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* User Selection */}
         <div 
           onClick={() => setActiveComponent('user-selector')}
-          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer border-l-4 border-indigo-500"
+          className={`bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer border-l-4 ${
+            selectedUserId ? 'border-green-500' : 'border-indigo-500'
+          }`}
         >
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Select User</h3>
-              <p className="text-sm text-gray-600 mt-1">Choose existing user for setup</p>
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                {selectedUserId && <CheckCircle className="h-5 w-5 text-green-500 mr-1" />}
+                Select User
+              </h3>
+              <p className="text-sm text-gray-600 mt-1">
+                {selectedUserId ? 'User selected - click to change' : 'Choose existing user for setup'}
+              </p>
             </div>
-            <UserSearch className="h-8 w-8 text-indigo-500" />
+            <UserSearch className={`h-8 w-8 ${selectedUserId ? 'text-green-500' : 'text-indigo-500'}`} />
           </div>
         </div>
 
         {/* Horse Management */}
         <div 
-          onClick={() => setActiveComponent('horse-management')}
-          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer border-l-4 border-amber-500"
+          onClick={() => {
+            if (selectedUserId) {
+              setActiveComponent('horse-management')
+            } else {
+              toast.error('Please select a user first')
+            }
+          }}
+          className={`bg-white p-6 rounded-lg shadow-md transition-shadow border-l-4 border-amber-500 ${
+            selectedUserId 
+              ? 'hover:shadow-lg cursor-pointer' 
+              : 'opacity-50 cursor-not-allowed'
+          }`}
         >
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Horse Management</h3>
               <p className="text-sm text-gray-600 mt-1">Add horses with full details</p>
+              {!selectedUserId && (
+                <p className="text-xs text-red-500 mt-1">Requires user selection</p>
+              )}
             </div>
             <MapPin className="h-8 w-8 text-amber-500" />
           </div>
@@ -251,13 +313,26 @@ export default function Dashboard() {
 
         {/* Consumable Management */}
         <div 
-          onClick={() => setActiveComponent('consumable-management')}
-          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer border-l-4 border-emerald-500"
+          onClick={() => {
+            if (selectedUserId) {
+              setActiveComponent('consumable-management')
+            } else {
+              toast.error('Please select a user first')
+            }
+          }}
+          className={`bg-white p-6 rounded-lg shadow-md transition-shadow border-l-4 border-emerald-500 ${
+            selectedUserId 
+              ? 'hover:shadow-lg cursor-pointer' 
+              : 'opacity-50 cursor-not-allowed'
+          }`}
         >
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Consumables</h3>
               <p className="text-sm text-gray-600 mt-1">Feed, medicine, supplements</p>
+              {!selectedUserId && (
+                <p className="text-xs text-red-500 mt-1">Requires user selection</p>
+              )}
             </div>
             <Package className="h-8 w-8 text-emerald-500" />
           </div>
@@ -265,13 +340,26 @@ export default function Dashboard() {
 
         {/* Service Pricing */}
         <div 
-          onClick={() => setActiveComponent('service-pricing')}
-          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer border-l-4 border-purple-500"
+          onClick={() => {
+            if (selectedUserId) {
+              setActiveComponent('service-pricing')
+            } else {
+              toast.error('Please select a user first')
+            }
+          }}
+          className={`bg-white p-6 rounded-lg shadow-md transition-shadow border-l-4 border-purple-500 ${
+            selectedUserId 
+              ? 'hover:shadow-lg cursor-pointer' 
+              : 'opacity-50 cursor-not-allowed'
+          }`}
         >
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Service Pricing</h3>
               <p className="text-sm text-gray-600 mt-1">Setup billing rates & services</p>
+              {!selectedUserId && (
+                <p className="text-xs text-red-500 mt-1">Requires user selection</p>
+              )}
             </div>
             <DollarSign className="h-8 w-8 text-purple-500" />
           </div>
@@ -288,18 +376,15 @@ export default function Dashboard() {
         return <TrainerSetup onComplete={handleSetupComplete} />
       case 'user-management':
         return <UserManagement 
-          organizations={organizations}
-          users={users}
+          organizations={stats.organizations}
+          users={stats.users}
           onComplete={handleSetupComplete}
         />
       case 'user-selector':
         return (
           <UserSelector
             onBack={() => setActiveComponent('dashboard')}
-            onUserSelected={(userId, organizationId) => {
-              setSelectedUserId(userId)
-              setSelectedOrganizationId(organizationId)
-            }}
+            onUserSelected={handleUserSelected}
             selectedUserId={selectedUserId}
             selectedOrganizationId={selectedOrganizationId}
           />
@@ -355,26 +440,6 @@ export default function Dashboard() {
 
             {/* Business Setup Management */}
             {renderBusinessSetupCards()}
-
-            {/* Selected User/Organization Status */}
-            {(selectedUserId || selectedOrganizationId) && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h3 className="text-sm font-medium text-blue-900 mb-2">Current Selection</h3>
-                <div className="text-sm text-blue-700">
-                  {selectedUserId && <p>Selected User ID: {selectedUserId}</p>}
-                  {selectedOrganizationId && <p>Selected Organization ID: {selectedOrganizationId}</p>}
-                </div>
-                <button
-                  onClick={() => {
-                    setSelectedUserId(null)
-                    setSelectedOrganizationId(null)
-                  }}
-                  className="mt-2 text-sm text-blue-600 hover:text-blue-800 underline"
-                >
-                  Clear Selection
-                </button>
-              </div>
-            )}
           </div>
         )
     }
