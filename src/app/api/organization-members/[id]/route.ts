@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '../../../../lib/supabase'
+import { getSupabaseAdmin } from '../../../../lib/supabase'
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const supabaseAdmin = getSupabaseAdmin()
     const { id } = params
     const updateData = await request.json()
     
@@ -12,15 +13,15 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       .eq('id', id)
       .select()
       .single()
-    
-    if (error) {
-      console.error('Error updating organization member:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-    
+
+    if (error) throw error
+
     return NextResponse.json({ member: data })
   } catch (error) {
-    console.error('Error in organization-members PATCH API:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('Error updating organization member:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to update organization member' },
+      { status: 500 }
+    )
   }
 } 

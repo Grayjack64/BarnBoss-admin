@@ -1,53 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '../../../lib/supabase'
+import { getSupabaseAdmin } from '../../../lib/supabase'
 
 export async function GET(request: NextRequest) {
   try {
+    const supabaseAdmin = getSupabaseAdmin()
     const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('user_id')
     const organizationId = searchParams.get('organization_id')
     
-    if (!userId || !organizationId) {
-      return NextResponse.json({ error: 'user_id and organization_id are required' }, { status: 400 })
-    }
-    
-    const { data, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('organization_members')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('organization_id', organizationId)
-      .single()
+      .select(`
+        *,
+        user_account_profiles(email, user_metadata),
+        roles(name, color)
+      `)
     
-    if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned"
-      console.error('Error fetching organization member:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (organizationId) {
+      query = query.eq('organization_id', organizationId)
     }
     
-    return NextResponse.json({ member: data || null })
+    const { data, error } = await query.order('joined_at', { ascending: false })
+
+    if (error) throw error
+
+    return NextResponse.json({ members: data || [] })
   } catch (error) {
-    console.error('Error in organization-members GET API:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('Error fetching organization members:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to fetch organization members' },
+      { status: 500 }
+    )
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    const supabaseAdmin = getSupabaseAdmin()
     const memberData = await request.json()
-    
+
+    if (!memberData.organization_id || !memberData.user_id || !memberData.role_id) {
+      return NextResponse.json(
+        { error: 'organization_id, user_id, and role_id are required' },
+        { status: 400 }
+      )
+    }
+
     const { data, error } = await supabaseAdmin
       .from('organization_members')
       .insert(memberData)
-      .select()
+      .select(`
+        *,
+        user_account_profiles(email, user_metadata),
+        roles(name, color)
+      `)
       .single()
-    
-    if (error) {
-      console.error('Error creating organization member:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-    
+
+    if (error) throw error
+
     return NextResponse.json({ member: data })
   } catch (error) {
-    console.error('Error in organization-members POST API:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('Error creating organization member:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to create organization member' },
+      { status: 500 }
+    )
   }
 } 

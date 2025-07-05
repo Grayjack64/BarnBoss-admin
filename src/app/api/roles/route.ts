@@ -1,50 +1,63 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '../../../lib/supabase'
+import { getSupabaseAdmin } from '../../../lib/supabase'
 
 export async function GET(request: NextRequest) {
   try {
+    const supabaseAdmin = getSupabaseAdmin()
     const { searchParams } = new URL(request.url)
     const organizationId = searchParams.get('organization_id')
     
     if (!organizationId) {
-      return NextResponse.json({ error: 'organization_id is required' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'organization_id is required' },
+        { status: 400 }
+      )
     }
     
     const { data, error } = await supabaseAdmin
       .from('roles')
       .select('*')
       .eq('organization_id', organizationId)
-      .order('name')
-    
-    if (error) {
-      console.error('Error fetching roles:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-    
+      .order('name', { ascending: true })
+
+    if (error) throw error
+
     return NextResponse.json({ roles: data || [] })
   } catch (error) {
-    console.error('Error in roles GET API:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('Error fetching roles:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to fetch roles' },
+      { status: 500 }
+    )
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const rolesData = await request.json()
-    
+    const supabaseAdmin = getSupabaseAdmin()
+    const roleData = await request.json()
+
+    if (!roleData.organization_id || !roleData.name) {
+      return NextResponse.json(
+        { error: 'organization_id and name are required' },
+        { status: 400 }
+      )
+    }
+
     const { data, error } = await supabaseAdmin
       .from('roles')
-      .insert(rolesData)
+      .insert(roleData)
       .select()
-    
-    if (error) {
-      console.error('Error creating roles:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-    
-    return NextResponse.json({ roles: data })
+      .single()
+
+    if (error) throw error
+
+    return NextResponse.json({ role: data })
   } catch (error) {
-    console.error('Error in roles POST API:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('Error creating role:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to create role' },
+      { status: 500 }
+    )
   }
 } 
