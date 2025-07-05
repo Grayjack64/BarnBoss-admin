@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { Organization, User } from '../lib/supabase'
 import { BuildingOfficeIcon, UserIcon, AcademicCapIcon } from '@heroicons/react/24/outline'
-import { supabase } from '../lib/supabase'
+import { supabase, validateSupabaseClients } from '../lib/supabase'
 import OrganizationSetup from './OrganizationSetup'
 import TrainerSetup from './TrainerSetup'
 import UserManagement from './UserManagement'
@@ -35,10 +35,27 @@ export default function Dashboard() {
   const [selectedOrganizationId, setSelectedOrganizationId] = useState<string | null>(null)
 
   useEffect(() => {
-    loadData()
+    // Validate Supabase clients on component mount
+    try {
+      validateSupabaseClients()
+      console.log('Supabase clients validated successfully')
+    } catch (error) {
+      console.error('Supabase validation failed:', error)
+      toast.error('Supabase configuration error: ' + (error instanceof Error ? error.message : 'Unknown error'))
+    }
+
+    // Debug environment variables in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Environment check:')
+      console.log('- NEXT_PUBLIC_SUPABASE_URL:', !!process.env.NEXT_PUBLIC_SUPABASE_URL)
+      console.log('- NEXT_PUBLIC_SUPABASE_ANON_KEY:', !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+      console.log('- NODE_ENV:', process.env.NODE_ENV)
+    }
+
+    loadDashboardData()
   }, [])
 
-  const loadData = async () => {
+  const loadDashboardData = async () => {
     setLoading(true)
     try {
       // Load organizations
@@ -79,7 +96,7 @@ export default function Dashboard() {
 
   const handleSetupComplete = () => {
     setActiveComponent('dashboard')
-    loadData()
+    loadDashboardData()
     toast.success('Setup completed successfully!')
   }
 

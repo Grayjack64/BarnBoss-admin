@@ -1,20 +1,75 @@
 import { createClient } from '@supabase/supabase-js'
 import { User } from '@supabase/auth-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+// Environment variable validation with detailed error messages
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+// Validate environment variables
+if (!supabaseUrl) {
+  console.error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable')
+  throw new Error('NEXT_PUBLIC_SUPABASE_URL is required but not set')
+}
+
+if (!supabaseAnonKey) {
+  console.error('Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable')
+  throw new Error('NEXT_PUBLIC_SUPABASE_ANON_KEY is required but not set')
+}
+
+if (!supabaseServiceRoleKey && typeof window === 'undefined') {
+  // Only check for service role key on server side
+  console.error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable (server-side)')
+  throw new Error('SUPABASE_SERVICE_ROLE_KEY is required for server-side operations')
+}
+
+// Debug logging for environment variables (only in development)
+if (process.env.NODE_ENV === 'development') {
+  console.log('Supabase URL:', supabaseUrl?.substring(0, 30) + '...')
+  console.log('Supabase Anon Key:', supabaseAnonKey?.substring(0, 20) + '...')
+  console.log('Service Role Key available:', !!supabaseServiceRoleKey)
+}
 
 // Client for regular operations
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
-
-// Admin client for service operations
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    autoRefreshToken: false,
-    persistSession: false
+    autoRefreshToken: true,
+    persistSession: true
   }
 })
+
+// Admin client for service operations (server-side only)
+export const supabaseAdmin = supabaseServiceRoleKey 
+  ? createClient(supabaseUrl, supabaseServiceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    })
+  : null
+
+// Validation function to check if clients are properly initialized
+export const validateSupabaseClients = () => {
+  if (!supabase) {
+    throw new Error('Supabase client failed to initialize')
+  }
+  
+  if (typeof window === 'undefined' && !supabaseAdmin) {
+    throw new Error('Supabase admin client failed to initialize (server-side)')
+  }
+  
+  return true
+}
+
+// Helper function to get admin client with proper error handling
+export const getSupabaseAdmin = () => {
+  if (!supabaseAdmin) {
+    throw new Error(
+      'Supabase admin client is not available. Please ensure SUPABASE_SERVICE_ROLE_KEY is set in environment variables.'
+    )
+  }
+  return supabaseAdmin
+}
 
 // Re-export User type from Supabase Auth
 export type { User } from '@supabase/auth-js'

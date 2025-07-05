@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '../../../../lib/supabase'
+import { supabase, validateSupabaseClients } from '../../../../lib/supabase'
 import { HorseSetupRequest, BusinessSetupResponse } from '../../../../lib/types'
 
 export async function POST(request: NextRequest) {
   try {
+    // Validate Supabase clients are properly initialized
+    validateSupabaseClients()
+    
     const body: HorseSetupRequest = await request.json()
     const { user_id, organization_id, horses } = body
 

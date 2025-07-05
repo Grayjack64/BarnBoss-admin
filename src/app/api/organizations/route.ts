@@ -1,43 +1,61 @@
-import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '../../../lib/supabase'
+import { NextRequest, NextResponse } from 'next/server'
+import { getSupabaseAdmin } from '../../../lib/supabase'
 
 export async function GET() {
   try {
+    const supabaseAdmin = getSupabaseAdmin()
     const { data, error } = await supabaseAdmin
       .from('organizations')
-      .select('*')
+      .select(`
+        *,
+        organization_members(count)
+      `)
       .order('created_at', { ascending: false })
-    
-    if (error) {
-      console.error('Error fetching organizations:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-    
-    return NextResponse.json({ organizations: data || [] })
+
+    if (error) throw error
+
+    // Calculate member count for each organization
+    const organizationsWithCount = data?.map(org => ({
+      ...org,
+      member_count: org.organization_members?.[0]?.count || 0
+    })) || []
+
+    return NextResponse.json({ organizations: organizationsWithCount })
   } catch (error) {
-    console.error('Error in organizations API:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('Error fetching organizations:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to fetch organizations' },
+      { status: 500 }
+    )
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const orgData = await request.json()
-    
+    const supabaseAdmin = getSupabaseAdmin()
+    const organizationData = await request.json()
+
+    if (!organizationData.name || !organizationData.type) {
+      return NextResponse.json(
+        { error: 'Name and type are required' },
+        { status: 400 }
+      )
+    }
+
     const { data, error } = await supabaseAdmin
       .from('organizations')
-      .insert(orgData)
+      .insert(organizationData)
       .select()
       .single()
-    
-    if (error) {
-      console.error('Error creating organization:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-    
+
+    if (error) throw error
+
     return NextResponse.json({ organization: data })
   } catch (error) {
-    console.error('Error in organizations POST API:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('Error creating organization:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to create organization' },
+      { status: 500 }
+    )
   }
 } 

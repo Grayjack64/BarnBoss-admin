@@ -344,4 +344,78 @@ This project is licensed under the MIT License.
 
 ## Support
 
-For issues or questions, please contact the development team or create an issue in the repository. 
+For issues or questions, please contact the development team or create an issue in the repository.
+
+## Environment Variables
+
+### Required Environment Variables
+
+For the application to work properly, you need to set the following environment variables:
+
+#### Netlify Environment Variables
+Set these in your Netlify dashboard under Site settings > Environment variables:
+
+```bash
+# Admin Authentication
+ADMIN_PASSWORD=your_secure_admin_password_here
+
+# Supabase Configuration (Client-side accessible)
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
+
+# Supabase Configuration (Server-side only)
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
+```
+
+#### Important Notes:
+- `NEXT_PUBLIC_*` variables are exposed to the browser and are required for client-side Supabase operations
+- `SUPABASE_SERVICE_ROLE_KEY` is only used server-side for admin operations and should never be exposed to the client
+- All variables must be set in Netlify for the deployed application to work
+
+### Getting Supabase Credentials
+
+1. Go to your Supabase project dashboard
+2. Navigate to Settings > API
+3. Copy the following values:
+   - **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`
+   - **Project API keys > anon public** → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - **Project API keys > service_role** → `SUPABASE_SERVICE_ROLE_KEY`
+
+### Local Development
+
+For local development, create a `.env.local` file in the project root:
+
+```bash
+ADMIN_PASSWORD=admin123
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
+```
+
+## Troubleshooting
+
+### "supabaseKey is required" Error
+
+This error occurs when the Supabase environment variables are not properly set. Check:
+
+1. **Netlify Environment Variables**: Ensure all required variables are set in your Netlify dashboard
+2. **Variable Names**: Make sure the variable names match exactly (case-sensitive)
+3. **Build Logs**: Check Netlify build logs for any environment variable loading issues
+4. **Browser Console**: Check for detailed error messages about which specific variable is missing
+
+### Build Failures
+
+If the build fails with environment variable errors:
+
+1. Ensure all `NEXT_PUBLIC_*` variables are set
+2. For API routes that need admin access, ensure `SUPABASE_SERVICE_ROLE_KEY` is set
+3. Redeploy after setting all variables
+
+### Client-Side vs Server-Side
+
+- **Client-side code** (components, pages): Can only access `NEXT_PUBLIC_*` variables
+- **Server-side code** (API routes): Can access all environment variables including `SUPABASE_SERVICE_ROLE_KEY`
+
+## Components Overview
+
+// ... existing content ... 

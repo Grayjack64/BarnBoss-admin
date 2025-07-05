@@ -1,40 +1,52 @@
-import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '../../../lib/supabase'
+import { NextRequest, NextResponse } from 'next/server'
+import { getSupabaseAdmin } from '../../../lib/supabase'
 
 export async function GET() {
   try {
+    const supabaseAdmin = getSupabaseAdmin()
     const { data, error } = await supabaseAdmin.auth.admin.listUsers()
     
-    if (error) {
-      console.error('Error fetching users:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    if (error) throw error
     
-    return NextResponse.json({ users: data.users || [] })
+    return NextResponse.json({ users: data.users })
   } catch (error) {
-    console.error('Error in users API:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('Error fetching users:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to fetch users' },
+      { status: 500 }
+    )
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const { email, password, userData } = await request.json()
+    const supabaseAdmin = getSupabaseAdmin()
+    const { email, password, full_name, phone } = await request.json()
+    
+    if (!email || !password) {
+      return NextResponse.json(
+        { error: 'Email and password are required' },
+        { status: 400 }
+      )
+    }
     
     const { data, error } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      user_metadata: userData
+      user_metadata: {
+        full_name,
+        phone
+      }
     })
     
-    if (error) {
-      console.error('Error creating user:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    if (error) throw error
     
     return NextResponse.json({ user: data.user })
   } catch (error) {
-    console.error('Error in users POST API:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('Error creating user:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to create user' },
+      { status: 500 }
+    )
   }
 } 
