@@ -8,8 +8,8 @@ import OrganizationSetup from './OrganizationSetup'
 import TrainerSetup from './TrainerSetup'
 import UserManagement from './UserManagement'
 import toast from 'react-hot-toast'
-import { Building2, Users, UserPlus, BarChart3, Shield, MapPin, Package, DollarSign, ClipboardList, UserSearch, CheckCircle } from 'lucide-react'
-import UserSelector from './UserSelector'
+import { Building2, Users, UserPlus, BarChart3, Shield, MapPin, Package, DollarSign, ClipboardList, UserSearch, CheckCircle, CalendarDays, UserCheck } from 'lucide-react'
+import UserDropdownSelector from './UserDropdownSelector'
 import HorseManagement from './HorseManagement'
 import ConsumableManagement from './ConsumableManagement'
 import ServicePricing from './ServicePricing'
@@ -21,10 +21,11 @@ type ActiveComponent =
   | 'organization-setup' 
   | 'trainer-setup' 
   | 'user-management'
-  | 'user-selector'
   | 'horse-management'
   | 'consumable-management'
   | 'service-pricing'
+  | 'task-management'
+  | 'invite-users'
 
 interface DashboardStats {
   totalOrganizations: number
@@ -108,7 +109,6 @@ export default function Dashboard() {
     setSelectedOrganizationId(organizationId)
     setSelectedUserEmail(userEmail)
     setSelectedOrgName(orgName)
-    setActiveComponent('dashboard')
     toast.success(`Selected user: ${userEmail}${orgName ? ` (${orgName})` : ''}`)
   }
 
@@ -229,8 +229,23 @@ export default function Dashboard() {
         Business Setup Management
       </h2>
       <p className="text-gray-600 mb-6">
-        Set up complete business operations for existing users including horses, consumables, and service pricing.
+        Set up complete business operations for existing users including horses, consumables, service pricing, tasks, and team management.
       </p>
+      
+      {/* User Selection Dropdown */}
+      <div className="bg-white p-6 rounded-lg shadow-md mb-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+          <UserSearch className="h-5 w-5 mr-2 text-indigo-600" />
+          Select User for Business Setup
+        </h3>
+        <UserDropdownSelector
+          selectedUserId={selectedUserId}
+          selectedOrganizationId={selectedOrganizationId}
+          selectedUserEmail={selectedUserEmail}
+          selectedOrgName={selectedOrgName}
+          onUserSelected={handleUserSelected}
+        />
+      </div>
       
       {/* Selected User Display */}
       {selectedUserId && (
@@ -262,28 +277,7 @@ export default function Dashboard() {
         </div>
       )}
       
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* User Selection */}
-        <div 
-          onClick={() => setActiveComponent('user-selector')}
-          className={`bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer border-l-4 ${
-            selectedUserId ? 'border-green-500' : 'border-indigo-500'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                {selectedUserId && <CheckCircle className="h-5 w-5 text-green-500 mr-1" />}
-                Select User
-              </h3>
-              <p className="text-sm text-gray-600 mt-1">
-                {selectedUserId ? 'User selected - click to change' : 'Choose existing user for setup'}
-              </p>
-            </div>
-            <UserSearch className={`h-8 w-8 ${selectedUserId ? 'text-green-500' : 'text-indigo-500'}`} />
-          </div>
-        </div>
-
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Horse Management */}
         <div 
           onClick={() => {
@@ -364,6 +358,60 @@ export default function Dashboard() {
             <DollarSign className="h-8 w-8 text-purple-500" />
           </div>
         </div>
+
+        {/* Task Management */}
+        <div 
+          onClick={() => {
+            if (selectedUserId) {
+              setActiveComponent('task-management')
+            } else {
+              toast.error('Please select a user first')
+            }
+          }}
+          className={`bg-white p-6 rounded-lg shadow-md transition-shadow border-l-4 border-blue-500 ${
+            selectedUserId 
+              ? 'hover:shadow-lg cursor-pointer' 
+              : 'opacity-50 cursor-not-allowed'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Task Management</h3>
+              <p className="text-sm text-gray-600 mt-1">Create tasks & schedules</p>
+              {!selectedUserId && (
+                <p className="text-xs text-red-500 mt-1">Requires user selection</p>
+              )}
+            </div>
+            <CalendarDays className="h-8 w-8 text-blue-500" />
+          </div>
+        </div>
+
+        {/* Invite Users */}
+        <div 
+          onClick={() => {
+            if (selectedUserId && selectedOrganizationId) {
+              setActiveComponent('invite-users')
+            } else {
+              toast.error('Please select a user with an organization first')
+            }
+          }}
+          className={`bg-white p-6 rounded-lg shadow-md transition-shadow border-l-4 border-teal-500 ${
+            selectedUserId && selectedOrganizationId
+              ? 'hover:shadow-lg cursor-pointer' 
+              : 'opacity-50 cursor-not-allowed'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Invite Users</h3>
+              <p className="text-sm text-gray-600 mt-1">Add team members to organization</p>
+              {!selectedUserId || !selectedOrganizationId ? (
+                <p className="text-xs text-red-500 mt-1">Requires user with organization</p>
+              ) : null}
+            </div>
+            <UserCheck className="h-8 w-8 text-teal-500" />
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -380,15 +428,6 @@ export default function Dashboard() {
           users={stats.users}
           onComplete={handleSetupComplete}
         />
-      case 'user-selector':
-        return (
-          <UserSelector
-            onBack={() => setActiveComponent('dashboard')}
-            onUserSelected={handleUserSelected}
-            selectedUserId={selectedUserId}
-            selectedOrganizationId={selectedOrganizationId}
-          />
-        )
       case 'horse-management':
         return (
           <HorseManagement
@@ -412,6 +451,32 @@ export default function Dashboard() {
             selectedUserId={selectedUserId}
             selectedOrganizationId={selectedOrganizationId}
           />
+        )
+      case 'task-management':
+        return (
+          <div className="p-6 bg-white rounded-lg shadow-md">
+            <h2 className="text-2xl font-bold mb-4">Task Management</h2>
+            <p className="text-gray-600 mb-4">Task management functionality coming soon...</p>
+            <button
+              onClick={() => setActiveComponent('dashboard')}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Back to Dashboard
+            </button>
+          </div>
+        )
+      case 'invite-users':
+        return (
+          <div className="p-6 bg-white rounded-lg shadow-md">
+            <h2 className="text-2xl font-bold mb-4">Invite Users</h2>
+            <p className="text-gray-600 mb-4">User invitation functionality coming soon...</p>
+            <button
+              onClick={() => setActiveComponent('dashboard')}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Back to Dashboard
+            </button>
+          </div>
         )
       default:
         return (
